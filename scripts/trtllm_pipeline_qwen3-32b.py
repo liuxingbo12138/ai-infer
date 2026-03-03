@@ -14,8 +14,11 @@ trtllm 统一压测 Pipeline (多轮, 支持 session)
     # 只跑压测, 不启动服务 (复用已运行的服务, 结果写入同一 session 目录)
     python3 trtllm_pipeline_qwen3-32b.py --no-server
 
-    # 只看结果 (从 summary.json 读取并打印表格)
+    # 只看结果 (从当前 session 的 summary.json 读取并打印表格)
     python3 trtllm_pipeline_qwen3-32b.py --show-summary
+
+    # 查看指定 session 的结果
+    python3 trtllm_pipeline_qwen3-32b.py --show-summary bench_20260302_092317
 """
 
 import argparse
@@ -102,19 +105,11 @@ enable_chunked_prefill: true
 
 kv_cache_config:
   dtype: fp8
-  enable_block_reuse: false
-
-torch_compile_config:
-  enable_piecewise_cuda_graph: true
 
 cuda_graph_config:
   enable_padding: true
-  max_batch_size: 128
+  max_batch_size: 256
 
-enable_iter_perf_stats: true
-enable_iter_req_stats: true
-iter_stats_max_iterations: 2048
-request_stats_max_iterations: 2048
 """
 
 # ==================== 服务启动命令 ====================
@@ -475,86 +470,77 @@ def parse_args():
     group.add_argument(
         "--show-summary",
         nargs="?",
-        const="current_session",
-        help="只查看已有的压测结果。可以指定具体的 session 目录 (如: logs/trtllm/bench_...), 不指定则默认查看当前 session",
+        const=True,
+        default=None,
+        metavar="SESSION_NAME",
+        help="只查看已有的压测结果, 可指定 session 目录名 (如 bench_20260302_092317)",
     )
     return parser.parse_args()
 
 
-def show_summary(session_dir=None):
-    """从指定的 session 目录或当前 session 的 summary.json 读取并打印所有轮次结果表格。
-    如果不包含 summary.json, 则尝试直接读取分段结果文件分析。
+def show_summary(session_name=None):
+    """从指定或当前 session 的 summary.json 读取并打印所有轮次结果表格。
+
+    Args:
+        session_name: 可选, session 目录名 (如 bench_20260302_092317)。
+                      不指定时从 .current_session 读取。
     """
-    if session_dir and session_dir != "current_session":
-        output_dir = session_dir
+    if session_name:
+        output_dir = os.path.join(LOG_BASE_DIR, session_name)
+        if not os.path.isdir(output_dir):
+            print(f"[Pipeline] ✗ 指定的 session 目录不存在: {output_dir}")
+            # 列出可用的 session
+            if os.path.isdir(LOG_BASE_DIR):
+                sessions = sorted(
+                    [d for d in os.listdir(LOG_BASE_DIR)
+                     if d.startswith("bench_") and os.path.isdir(os.path.join(LOG_BASE_DIR, d))],
+                    reverse=True,
+                )
+                if sessions:
+                    print(f"[Pipeline] 可用的 session:")
+                    for s in sessions:
+                        print(f"             {s}")
+            sys.exit(1)
+        print(f"[Pipeline] 指定 session: {output_dir}")
     else:
         output_dir = load_session()
-    
+
     summary_path = os.path.join(output_dir, "summary.json")
 
-    # 方式一: summary.json 存在
-    if os.path.exists(summary_path):
-        with open(summary_path, "r") as f:
-            summary = json.load(f)
-
-        rounds = summary.get("rounds", [])
-        if not rounds:
-            print("[Pipeline] ⚠ summary.json 中没有压测结果")
-            sys.exit(1)
-
-        print(f"[Pipeline] Session: {output_dir}")
-        print(f"[Pipeline] 模型: {summary.get('model', '-')}")
-        print(f"[Pipeline] 时间: {summary.get('timestamp', '-')}")
-
-        for rnd in rounds:
-            round_cfg = {
-                "label": rnd["label"],
-                "desc": rnd["desc"],
-                "input_len": rnd["input_len"],
-                "output_len": rnd["output_len"],
-            }
-            print_round_table(round_cfg, rnd.get("results", []))
-        return
-
-    # 方式二: 从分散的日志文件中解析 (兼容旧数据)
-    if not os.path.exists(output_dir):
-        print(f"[Pipeline] ✗ 未找到日志目录: {output_dir}")
+    if not os.path.exists(summary_path):
+        print(f"[Pipeline] ✗ 未找到汇总文件: {summary_path}")
+        print(f"[Pipeline]   请先跑完压测生成结果")
         sys.exit(1)
-        
+
+    with open(summary_path, "r") as f:
+        summary = json.load(f)
+
+    rounds = summary.get("rounds", [])
+    if not rounds:
+        print("[Pipeline] ⚠ summary.json 中没有压测结果")
+        sys.exit(1)
+
     print(f"[Pipeline] Session: {output_dir}")
-    print(f"[Pipeline] 未找到 summary.json, 尝试直接解析轮次结果 ...")
-    
-    has_results = False
-    for round_cfg in TEST_ROUNDS:
-        label = round_cfg["label"]
-        round_dir = os.path.join(output_dir, label)
-        if not os.path.exists(round_dir):
-            continue
-            
-        concurrency_list = round_cfg["concurrency_list"]
-        round_results = []
-        for c in concurrency_list:
-            result_path = os.path.join(round_dir, f"bench_c{c}.json")
-            if os.path.exists(result_path):
-                metrics = extract_metrics(result_path)
-                if metrics:
-                    round_results.append(metrics)
-                    
-        if round_results:
-            has_results = True
-            print_round_table(round_cfg, round_results)
-            
-    if not has_results:
-        print("[Pipeline] ✗ 目录下未找到任何压测结果!")
-        sys.exit(1)
+    print(f"[Pipeline] 模型: {summary.get('model', '-')}")
+    print(f"[Pipeline] 时间: {summary.get('timestamp', '-')}")
+
+    for rnd in rounds:
+        round_cfg = {
+            "label": rnd["label"],
+            "desc": rnd["desc"],
+            "input_len": rnd["input_len"],
+            "output_len": rnd["output_len"],
+        }
+        print_round_table(round_cfg, rnd.get("results", []))
 
 
 def main():
     args = parse_args()
 
     # ---- --show-summary: 只看结果, 立即返回 ----
-    if args.show_summary:
-        show_summary(args.show_summary)
+    if args.show_summary is not None:
+        session_name = args.show_summary if args.show_summary is not True else None
+        show_summary(session_name)
         return
 
     server_proc = None
