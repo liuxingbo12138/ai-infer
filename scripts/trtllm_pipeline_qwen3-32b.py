@@ -482,7 +482,9 @@ def parse_args():
 
 
 def show_summary(session_dir=None):
-    """从指定的 session 目录或当前 session 的 summary.json 读取并打印所有轮次结果表格。"""
+    """从指定的 session 目录或当前 session 的 summary.json 读取并打印所有轮次结果表格。
+    如果不包含 summary.json, 则尝试直接读取分段结果文件分析。
+    """
     if session_dir and session_dir != "current_session":
         output_dir = session_dir
     else:
@@ -490,31 +492,61 @@ def show_summary(session_dir=None):
     
     summary_path = os.path.join(output_dir, "summary.json")
 
-    if not os.path.exists(summary_path):
-        print(f"[Pipeline] ✗ 未找到汇总文件: {summary_path}")
-        print(f"[Pipeline]   请先跑完压测生成结果")
+    # 方式一: summary.json 存在
+    if os.path.exists(summary_path):
+        with open(summary_path, "r") as f:
+            summary = json.load(f)
+
+        rounds = summary.get("rounds", [])
+        if not rounds:
+            print("[Pipeline] ⚠ summary.json 中没有压测结果")
+            sys.exit(1)
+
+        print(f"[Pipeline] Session: {output_dir}")
+        print(f"[Pipeline] 模型: {summary.get('model', '-')}")
+        print(f"[Pipeline] 时间: {summary.get('timestamp', '-')}")
+
+        for rnd in rounds:
+            round_cfg = {
+                "label": rnd["label"],
+                "desc": rnd["desc"],
+                "input_len": rnd["input_len"],
+                "output_len": rnd["output_len"],
+            }
+            print_round_table(round_cfg, rnd.get("results", []))
+        return
+
+    # 方式二: 从分散的日志文件中解析 (兼容旧数据)
+    if not os.path.exists(output_dir):
+        print(f"[Pipeline] ✗ 未找到日志目录: {output_dir}")
         sys.exit(1)
-
-    with open(summary_path, "r") as f:
-        summary = json.load(f)
-
-    rounds = summary.get("rounds", [])
-    if not rounds:
-        print("[Pipeline] ⚠ summary.json 中没有压测结果")
-        sys.exit(1)
-
+        
     print(f"[Pipeline] Session: {output_dir}")
-    print(f"[Pipeline] 模型: {summary.get('model', '-')}")
-    print(f"[Pipeline] 时间: {summary.get('timestamp', '-')}")
-
-    for rnd in rounds:
-        round_cfg = {
-            "label": rnd["label"],
-            "desc": rnd["desc"],
-            "input_len": rnd["input_len"],
-            "output_len": rnd["output_len"],
-        }
-        print_round_table(round_cfg, rnd.get("results", []))
+    print(f"[Pipeline] 未找到 summary.json, 尝试直接解析轮次结果 ...")
+    
+    has_results = False
+    for round_cfg in TEST_ROUNDS:
+        label = round_cfg["label"]
+        round_dir = os.path.join(output_dir, label)
+        if not os.path.exists(round_dir):
+            continue
+            
+        concurrency_list = round_cfg["concurrency_list"]
+        round_results = []
+        for c in concurrency_list:
+            result_path = os.path.join(round_dir, f"bench_c{c}.json")
+            if os.path.exists(result_path):
+                metrics = extract_metrics(result_path)
+                if metrics:
+                    round_results.append(metrics)
+                    
+        if round_results:
+            has_results = True
+            print_round_table(round_cfg, round_results)
+            
+    if not has_results:
+        print("[Pipeline] ✗ 目录下未找到任何压测结果!")
+        sys.exit(1)
 
 
 def main():
