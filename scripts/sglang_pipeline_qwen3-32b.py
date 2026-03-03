@@ -392,15 +392,20 @@ def parse_args():
     )
     group.add_argument(
         "--show-summary",
-        action="store_true",
-        help="只查看已有的压测结果 (从 summary.json 读取并打印表格)",
+        nargs="?",
+        const="current_session",
+        help="只查看已有的压测结果。可以指定具体的 session 目录 (如: logs/sglang/bench_...), 不指定则默认查看当前 session",
     )
     return parser.parse_args()
 
 
-def show_summary():
-    """从当前 session 的 summary.json 读取并打印所有轮次结果表格。"""
-    output_dir = load_session()
+def show_summary(session_dir=None):
+    """从指定的 session 目录或当前 session 的 summary.json 读取并打印所有轮次结果表格。"""
+    if session_dir and session_dir != "current_session":
+        output_dir = session_dir
+    else:
+        output_dir = load_session()
+    
     summary_path = os.path.join(output_dir, "summary.json")
 
     if not os.path.exists(summary_path):
@@ -435,7 +440,7 @@ def main():
 
     # ---- --show-summary: 只看结果, 立即返回 ----
     if args.show_summary:
-        show_summary()
+        show_summary(args.show_summary)
         return
 
     server_proc = None
