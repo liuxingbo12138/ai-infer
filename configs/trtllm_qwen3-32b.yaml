@@ -1,0 +1,51 @@
+backend: trtllm
+
+model:
+  path: /data/models/Qwen3-32B-FP8/checkpoints
+  name: Qwen3-32B
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  health_check_interval: 5
+  health_check_timeout: 600
+  # trtllm 额外配置文件内容 (会写入 session 目录的 trtllm_config.yaml)
+  config_arg: "--extra_llm_api_options"   # 老版用 --extra_llm_api_options, 新版用 --config
+  config_yaml: |
+    enable_chunked_prefill: true
+
+    kv_cache_config:
+      dtype: fp8
+
+    cuda_graph_config:
+      enable_padding: true
+      max_batch_size: 256
+  extra_args:
+    - --tp_size=1
+    - --max_seq_len=6144
+    - --max_batch_size=2048
+    - --max_num_tokens=8192
+    - --reasoning_parser=deepseek-r1
+    - --trust_remote_code
+    - --kv_cache_free_gpu_memory_fraction=0.93
+
+benchmark:
+  seed: 12138
+  rounds:
+    - label: round1_prefill
+      desc: "Prefill 压测 (长输入, 短输出)"
+      input_len: 5500
+      output_len: 1
+      concurrency_list: [1, 2, 4, 8, 16, 32, 64]
+    - label: round2_decode
+      desc: "Decode 压测 (短输入, 长输出)"
+      input_len: 1
+      output_len: 600
+      concurrency_list: [1, 2, 4, 8, 16, 32, 64, 128]
+    - label: round3_mixed
+      desc: "混合压测 (长输入, 长输出)"
+      input_len: 5500
+      output_len: 600
+      concurrency_list: [1, 2, 4, 8, 16, 32, 64]
+
+log_dir: /data/logs/trtllm
