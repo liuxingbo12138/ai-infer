@@ -139,6 +139,10 @@ def main():
             print(f"  ISL={input_len}, OSL={output_len}, 并发={concurrency_list}")
             print(f"{'#'*70}")
 
+            if not concurrency_list:
+                print(f"[Pipeline] ⚠ [{label}] concurrency_list 为空, 跳过本轮")
+                continue
+
             round_dir = os.path.join(output_dir, label)
             os.makedirs(round_dir, exist_ok=True)
 

@@ -1,5 +1,6 @@
 """后端抽象基类: 每个推理框架只需实现 3 个方法。"""
 
+import os
 from abc import ABC, abstractmethod
 
 
@@ -93,7 +94,16 @@ class BackendBase(ABC):
 
     @property
     def log_dir(self) -> str:
-        return self.config.get("log_dir", f"/data/logs/{self.name}")
+        """日志根目录, 自动追加 model_name 子目录。
+
+        如果 YAML 中为相对路径, 则相对于项目根目录解析。
+        最终结构: {log_dir}/{model_name}/
+        """
+        d = self.config.get("log_dir", f"logs/{self.name}")
+        if not os.path.isabs(d):
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            d = os.path.join(project_root, d)
+        return os.path.join(d, self.model_name)
 
     @property
     def health_check_interval(self) -> int:

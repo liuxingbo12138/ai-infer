@@ -43,4 +43,4 @@ benchmark:
       output_len: 600
       concurrency_list: [1, 2, 4, 8, 16, 32]
 
-log_dir: /data/logs/sglang
+log_dir: logs/sglang

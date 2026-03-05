@@ -79,10 +79,32 @@ def generate_summary(backend, all_round_results, output_dir):
         new_rounds.append(round_entry)
         print_round_table(round_cfg, results)
 
-    # 合并: 同 label 的用新结果覆盖, 不同的保留
-    existing_labels = {r["label"] for r in new_rounds}
-    merged_rounds = [r for r in existing_rounds if r["label"] not in existing_labels]
-    merged_rounds.extend(new_rounds)
+    # 合并: 同 label 按 concurrency 级别合并 (新覆盖旧), 不同 label 保留
+    existing_by_label = {r["label"]: r for r in existing_rounds}
+    for new_round in new_rounds:
+        label = new_round["label"]
+        if label in existing_by_label:
+            old_round = existing_by_label[label]
+            # 以旧结果为基础, 用 concurrency 作 key 合并
+            old_results_by_c = {r["concurrency"]: r for r in old_round.get("results", [])}
+            for r in new_round.get("results", []):
+                old_results_by_c[r["concurrency"]] = r
+            # 按 concurrency 排序
+            merged_results = sorted(old_results_by_c.values(), key=lambda x: x.get("concurrency", 0))
+            new_round["results"] = merged_results
+        existing_by_label[label] = new_round
+
+    # 保持 round 顺序: 先已有的 (按原顺序), 再新增的
+    seen_labels = set()
+    merged_rounds = []
+    for r in existing_rounds:
+        if r["label"] in existing_by_label:
+            merged_rounds.append(existing_by_label[r["label"]])
+            seen_labels.add(r["label"])
+    for r in new_rounds:
+        if r["label"] not in seen_labels:
+            merged_rounds.append(r)
+            seen_labels.add(r["label"])
 
     summary = {
         "server_cmd": backend.server_cmd_for_summary(output_dir),
