@@ -1,0 +1,51 @@
+backend: sglang
+
+model:
+  path: /data/models/GLM-5-FP8/checkpoints
+  name: GLM-5-FP8
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  health_check_interval: 5
+  health_check_timeout: 3600
+  cuda_visible_devices: "0,1,2,3,4,5,6,7"
+  extra_args:
+    - --trust-remote-code
+    - --reasoning-parser=glm45
+    - --tensor-parallel-size=8
+    - --kv-cache-dtype=fp8_e4m3
+    - --speculative-algorithm=EAGLE
+    - --speculative-num-steps=1
+    - --speculative-eagle-topk=1
+    - --speculative-num-draft-tokens=2
+    - --context-length=6144
+    - --chunked-prefill-size=4096
+    - --mem-fraction-static=0.81
+    - --max-running-requests=64
+    - --allow-auto-truncate
+    - --enable-metrics
+    - --enable-cache-report
+    - --watchdog-timeout=7200
+
+benchmark:
+  seed: 12138
+  random_range_ratio: 1.0
+  rounds:
+    - label: round1_prefill
+      desc: "Prefill 压测 (长输入, 短输出)"
+      input_len: 5500
+      output_len: 1
+      concurrency_list: [1, 2, 4, 8, 16, 32, 64]
+    - label: round2_decode
+      desc: "Decode 压测 (短输入, 长输出)"
+      input_len: 1
+      output_len: 600
+      concurrency_list: [1, 2, 4, 8, 32, 64]
+    - label: round3_mixed
+      desc: "混合压测 (长输入, 长输出)"
+      input_len: 5500
+      output_len: 600
+      concurrency_list: [1, 2, 4, 8, 16, 32]
+
+log_dir: logs/sglang

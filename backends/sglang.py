@@ -20,7 +20,7 @@ class SGLangBackend(BackendBase):
         return cmd
 
     def build_bench_cmd(self, concurrency, input_len, output_len, num_prompts, result_path):
-        return [
+        cmd = [
             "python3", "-m", "sglang.bench_serving",
             "--backend", "sglang",
             "--host", "127.0.0.1",
@@ -31,11 +31,17 @@ class SGLangBackend(BackendBase):
             "--dataset-name", "random",
             "--random-input-len", str(input_len),
             "--random-output-len", str(output_len),
+        ]
+        random_range_ratio = self.config.get("benchmark", {}).get("random_range_ratio")
+        if random_range_ratio is not None:
+            cmd += ["--random-range-ratio", str(random_range_ratio)]
+        cmd += [
             "--flush-cache",
             "--output-file", result_path,
             "--output-details",
             "--seed", str(self.seed),
         ]
+        return cmd
 
     def parse_result(self, result_path):
         try:
