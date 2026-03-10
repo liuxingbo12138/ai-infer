@@ -29,6 +29,7 @@ import yaml
 from backends import get_backend
 from core.session import create_session, load_session, show_summary
 from core.server import start_server, wait_for_server, check_server_alive, kill_server
+from tests import get_test, ALL_TEST_NAMES
 from core.benchmark import run_benchmark
 from core.metrics import generate_summary
 
@@ -58,6 +59,19 @@ def parse_args():
         default=None,
         metavar="SESSION_NAME",
         help="只查看已有的压测结果, 可指定 session 目录名 (如 bench_20260302_092317)",
+    )
+    parser.add_argument(
+        "--test",
+        choices=ALL_TEST_NAMES,
+        default=None,
+        metavar="TEST_TYPE",
+        help=f"运行功能测试 (可选: {', '.join(ALL_TEST_NAMES)}), 不执行性能压测",
+    )
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=None,
+        help="功能测试的样本数量 (默认: tool_calling/structured_output=5, gsm8k=100, mmlu=50)",
     )
     return parser.parse_args()
 
@@ -117,11 +131,19 @@ def main():
         if args.server_only:
             print(f"\n[Pipeline] 服务已启动, --server-only 模式")
             print(f"[Pipeline] 压测时请运行: python3 bench.py -c {args.config} --no-server")
+            print(f"[Pipeline] 功能测试: python3 bench.py -c {args.config} --no-server --test <类型>")
             print(f"[Pipeline] 按 Ctrl+C 停止服务")
             try:
                 server_proc.wait()
             except KeyboardInterrupt:
                 print("\n[Pipeline] 收到 Ctrl+C, 正在停止服务 ...")
+            return
+
+        # ---- --test: 功能测试模式 ----
+        if args.test:
+            test_cls = get_test(args.test)
+            test = test_cls(backend, num_samples=args.num_samples)
+            test.execute(output_dir=output_dir)
             return
 
         # ---- 多轮压测 ----

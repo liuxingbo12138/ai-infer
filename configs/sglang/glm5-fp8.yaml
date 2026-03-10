@@ -14,13 +14,17 @@ server:
     - --trust-remote-code
     - --reasoning-parser=glm45
     - --tensor-parallel-size=8
+    - --data-parallel-size=8
+    - --enable-dp-attention
+    - --expert-parallel-size=8
+    - --moe-a2a-backend=deepep
     - --kv-cache-dtype=fp8_e4m3
     - --speculative-algorithm=EAGLE
     - --speculative-num-steps=1
     - --speculative-eagle-topk=1
     - --speculative-num-draft-tokens=2
     - --context-length=6144
-    - --chunked-prefill-size=4096
+    - --chunked-prefill-size=32768
     - --mem-fraction-static=0.81
     - --max-running-requests=64
     - --allow-auto-truncate

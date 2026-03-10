@@ -52,9 +52,34 @@ python3 bench.py -c configs/trtllm/qwen3-32b.yaml --show-summary
 python3 bench.py -c configs/trtllm/qwen3-32b.yaml --show-summary bench_20260302_092317
 ```
 
+## 功能测试
+
+独立于性能压测的功能正确性验证，通过 OpenAI 兼容 API 调用，sglang / vllm / trtllm 通用。
+
+| 测试类型 | 说明 | 默认样本数 |
+|---------|------|----------|
+| `tool_calling` | 工具调用 (验证 tool_calls 生成) | 5 |
+| `structured_output` | 结构化输出 (验证 JSON Schema 合规) | 5 |
+| `gsm8k` | 数学推理 (GSM8K 数据集) | 100 |
+| `mmlu` | 多任务理解 (MMLU 数据集) | 50 |
+
+```bash
+# 需要服务已运行, 先启动服务
+python3 bench.py -c configs/sglang/qwen3-32b.yaml --server-only
+
+# 在另一个终端运行功能测试
+python3 bench.py -c configs/sglang/qwen3-32b.yaml --no-server --test tool_calling
+python3 bench.py -c configs/sglang/qwen3-32b.yaml --no-server --test structured_output
+python3 bench.py -c configs/sglang/qwen3-32b.yaml --no-server --test gsm8k
+python3 bench.py -c configs/sglang/qwen3-32b.yaml --no-server --test mmlu --num-samples 20
+
+# 也可以一步启动服务 + 跑测试 (完成后自动 kill 服务)
+python3 bench.py -c configs/vllm/qwen3-32b.yaml --test tool_calling
+```
+
+依赖: `pip install openai datasets` (gsm8k / mmlu 需要 datasets)
+
 ## 新增模型/框架
 
 - **新增模型**: 在 `configs/<引擎>/` 下新建 YAML 配置文件，修改 `model.path`、`model.name` 和 `benchmark.rounds`。
 - **新增框架**: 在 `backends/` 下新建文件实现 `BackendBase` 的 3 个方法，然后在 `backends/__init__.py` 的 `BACKEND_REGISTRY` 中注册，并在 `configs/` 下新建对应引擎目录。
-
-
