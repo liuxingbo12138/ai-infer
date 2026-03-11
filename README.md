@@ -2,7 +2,30 @@
 
 统一压测 Pipeline — 配置驱动 + 插件化后端架构。
 
-## 目录结构
+本项目设计为直接运行在对应推理引擎（vLLM、SGLang、TRT-LLM）的官方 Docker 环境中。压测前，需要先启动相应容器并将代码及数据路径映射到容器内。
+
+## 1. 启动测试容器
+
+根据需要压测的引擎，使用以下常用的启动命令（已包含 `--gpus`、共享内存及代码数据等必要路径挂载：`-v /data:/data`）：
+
+### TRT-LLM
+```bash
+docker run --gpus '"device=0,1,2,3,4,5,6,7"' --shm-size=64g --name trt-llm1 --ulimit memlock=-1 -dit --network=host --cap-add=IPC_LOCK --privileged --device=/dev/infiniband -v /nfs/gen_media/api.liandanxia:/nfs/gen_media/api.liandanxia -v /data:/data nvcr.io/nvidia/tensorrt-llm
+```
+
+### vLLM
+```bash
+docker run --gpus '"device=0,1,2,3,4,5,6,7"' --shm-size=64g --name vllm1 --ulimit memlock=-1 -dit --network=host --cap-add=IPC_LOCK --privileged --device=/dev/infiniband -v /nfs/gen_media/api.liandanxia:/nfs/gen_media/api.liandanxia -v /data:/data --entrypoint /bin/bash vllm/vllm-openai
+```
+
+### SGLang
+```bash
+docker run --gpus '"device=0,1,2,3,4,5,6,7"' --shm-size=64g --name sglang1 --ulimit memlock=-1 -dit --network=host --cap-add=IPC_LOCK --privileged --device=/dev/infiniband -v /nfs/gen_media/api.liandanxia:/nfs/gen_media/api.liandanxia -v /data:/data lmsysorg/sglang
+```
+
+> **提示**：启动容器后，使用 `docker exec -it <容器名称> bash` 进入容器内，并切换至脚本目录（例如 `cd /data/ai-infer`），再执行下方的 `bench.py` 压测命令。
+
+## 2. 目录结构
 
 ```
 ai-infer/
